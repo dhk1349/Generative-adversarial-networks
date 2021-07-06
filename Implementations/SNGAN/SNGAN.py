@@ -11,6 +11,8 @@ from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import torchvision.utils as vutils
 
+from SpectralNormalization import SpectralNorm
+
 try:
     from tensorboardX import SummaryWriter
     summary = SummaryWriter()
@@ -78,18 +80,18 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.conv1_1 = nn.Conv2d(3, 64, 3, 1)
-        self.conv1_2 = nn.Conv2d(64, 64, 4, 2)
+        self.conv1_1 = SpectralNorm(nn.Conv2d(3, 64, 3, 1))
+        self.conv1_2 = SpectralNorm(nn.Conv2d(64, 64, 4, 2))
 
-        self.conv2_1 = nn.Conv2d(64, 128, 3, 1)
-        self.conv2_2 = nn.Conv2d(128, 128, 4, 2)
+        self.conv2_1 = SpectralNorm(nn.Conv2d(64, 128, 3, 1))
+        self.conv2_2 = SpectralNorm(nn.Conv2d(128, 128, 4, 2))
 
-        self.conv3_1 = nn.Conv2d(128, 256, 3, 1)
-        self.conv3_2 = nn.Conv2d(256, 256, 4, 2)
+        self.conv3_1 = SpectralNorm(nn.Conv2d(128, 256, 3, 1))
+        self.conv3_2 = SpectralNorm(nn.Conv2d(256, 256, 4, 2))
 
-        self.conv4 = nn.Conv2d(256, 512, 3, 1)
+        self.conv4 = SpectralNorm(nn.Conv2d(256, 512, 3, 1))
 
-        self.fc5 = nn.Linear(512*10*10, 1)
+        self.fc5 = SpectralNorm(nn.Linear(512*10*10, 1))
 
         self.lReLU = nn.LeakyReLU(0.1)
 
