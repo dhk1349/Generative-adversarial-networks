@@ -23,8 +23,8 @@ except ModuleNotFoundError:
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=1200, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=128, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="SGD's lr")
-parser.add_argument("--b1", type=float, default=0, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--lr", type=float, default=0.0001, help="SGD's lr")
+parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.9, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--latent_dim", type=int, default=128, help="dimensionality of the latent space")
 parser.add_argument("--sample_interval", type=int, default=100, help="interval between image sampling")
@@ -38,18 +38,20 @@ Implementation detail: refer to table3 at the paper.
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        self.fc1 = nn.Linear(128, 4*4*512)
-        
-        self.conv2 = nn.ConvTranspose2d(512, 256, 4, 2)
+        # self.fc1 = nn.Linear(128, 4*4*512)
+        self.conv1 = nn.ConvTranspose2d(128, 512, 4, 1)
+        self.BN1 = nn.BatchNorm2d(512)
+
+        self.conv2 = nn.ConvTranspose2d(512, 256, 4, 2, 1)
         self.BN2 = nn.BatchNorm2d(256)
         
-        self.conv3 = nn.ConvTranspose2d(256, 128, 4, 2)
+        self.conv3 = nn.ConvTranspose2d(256, 128, 4, 2, 1)
         self.BN3 = nn.BatchNorm2d(128)
         
-        self.conv4 = nn.ConvTranspose2d(128, 64, 4, 2)
+        self.conv4 = nn.ConvTranspose2d(128, 64, 4, 2, 1)
         self.BN4 = nn.BatchNorm2d(64)
         
-        self.conv5 = nn.Conv2d(64, 3, 3, 1)
+        self.conv5 = nn.Conv2d(64, 3, 3, 1, 1)
         self.tanh = nn.Tanh()
 
         self.ReLU = nn.ReLU()
@@ -57,8 +59,10 @@ class Generator(nn.Module):
 
     def forward(self, z):
         batch_size = z.size(0)
-        x = self.fc1(z)
-        x = x.view(batch_size, 512, 4, 4)
+        x = self.conv1(z)
+        x = self.BN1(x)
+        x = self.ReLU(x)
+        #x = x.view(batch_size, 512, 4, 4)
 
         x = self.conv2(x)
         x = self.BN2(x)
@@ -74,24 +78,25 @@ class Generator(nn.Module):
 
         x = self.conv5(x)
         x = self.tanh(x)
+
         return x
         
 
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.conv1_1 = SpectralNorm(nn.Conv2d(3, 64, 3, 1))
-        self.conv1_2 = SpectralNorm(nn.Conv2d(64, 64, 4, 2))
+        self.conv1_1 = SpectralNorm(nn.Conv2d(3, 64, 3, 1, 1))
+        self.conv1_2 = SpectralNorm(nn.Conv2d(64, 64, 4, 2, 1))
 
-        self.conv2_1 = SpectralNorm(nn.Conv2d(64, 128, 3, 1))
-        self.conv2_2 = SpectralNorm(nn.Conv2d(128, 128, 4, 2))
+        self.conv2_1 = SpectralNorm(nn.Conv2d(64, 128, 3, 1, 1))
+        self.conv2_2 = SpectralNorm(nn.Conv2d(128, 128, 4, 2, 1))
 
-        self.conv3_1 = SpectralNorm(nn.Conv2d(128, 256, 3, 1))
-        self.conv3_2 = SpectralNorm(nn.Conv2d(256, 256, 4, 2))
+        self.conv3_1 = SpectralNorm(nn.Conv2d(128, 256, 3, 1, 1))
+        self.conv3_2 = SpectralNorm(nn.Conv2d(256, 256, 4, 2, 1))
 
-        self.conv4 = SpectralNorm(nn.Conv2d(256, 512, 3, 1))
+        self.conv4 = SpectralNorm(nn.Conv2d(256, 512, 3, 1, 1))
 
-        self.fc5 = SpectralNorm(nn.Linear(512*10*10, 1))
+        self.fc5 = SpectralNorm(nn.Linear(512*4*4, 1))
 
         self.lReLU = nn.LeakyReLU(0.1)
 
@@ -117,8 +122,9 @@ class Discriminator(nn.Module):
 
         out = self.conv4(out)
         out = self.lReLU(out)
+        # print(out.size())
         out = out.view(batch_size, -1)
-
+        # print(out.size())
         out = self.fc5(out)
         return out
 
@@ -161,7 +167,7 @@ dataloader = torch.utils.data.DataLoader(
         train=True,
         download=True,
         transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Resize(128), transforms.Normalize([0.5], [0.5])]
+            [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
         ),
     ),
     batch_size=opt.batch_size,
@@ -176,15 +182,16 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
 def sample_image(n_row, batches_done):
     """Saves a grid of generated digits ranging from 0 to n_classes"""
     # Sample noise
-    z = torch.from_numpy(np.random.normal(0, 1, (n_row ** 2, opt.latent_dim)))
-    z = z.float().to(device)
-    
+    # z = torch.from_numpy(np.random.normal(0, 1, (n_row ** 2, opt.latent_dim)))
+    # z = z.float().to(device)
+    z = Variable(torch.randn(100, 128, 1, 1).cuda())
+
     gen_imgs = generator(z)
     save_image(gen_imgs.data, "images/%d.png" % batches_done, nrow=n_row, normalize=True)
     if tensorboard == True and batches_done%1000==0:
         summary.add_image("Generated MNIST", vutils.make_grid(gen_imgs.data, nrow=10),  batches_done)
 
-Resize = transforms.Resize(128)
+# Resize = transforms.Resize(128)
 
 for epoch in range(opt.n_epochs):
     for i, (imgs, labels) in enumerate(dataloader):
@@ -206,13 +213,13 @@ for epoch in range(opt.n_epochs):
         optimizer_G.zero_grad()
 
         # Sample noise and labels as generator input
-        z = torch.from_numpy(np.random.normal(0, 1, (batch_size, opt.latent_dim))).float().to(device)
+        # z = torch.from_numpy(np.random.normal(0, 1, (batch_size, opt.latent_dim))).float().to(device)
+        z = Variable(torch.randn(batch_size, 128, 1, 1).cuda())
 
         # Generate a batch of images
         gen_imgs = generator(z)
 
         # Loss measures generator's ability to fool the discriminator
-        gen_imgs = Resize(gen_imgs)
         validity = discriminator(gen_imgs)
         g_loss = adversarial_loss(validity, valid)
 
@@ -225,19 +232,26 @@ for epoch in range(opt.n_epochs):
 
         optimizer_D.zero_grad()
 
-        # Loss for real images
-        validity_real = discriminator(real_imgs)
-        d_real_loss = adversarial_loss(validity_real, valid)
+        for _ in range(5):
+            optimizer_D.zero_grad()
+            optimizer_G.zero_grad()
 
-        # Loss for fake images
-        validity_fake = discriminator(gen_imgs.detach())
-        d_fake_loss = adversarial_loss(validity_fake, fake)
+            z = Variable(torch.randn(batch_size, 128, 1, 1).cuda())
+            gen_imgs = generator(z)
 
-        # Total discriminator loss
-        d_loss = (d_real_loss + d_fake_loss)
+            # Loss for real images
+            validity_real = discriminator(real_imgs)
+            d_real_loss = adversarial_loss(validity_real, valid)
 
-        d_loss.backward()
-        optimizer_D.step()
+            # Loss for fake images
+            validity_fake = discriminator(gen_imgs.detach())
+            d_fake_loss = adversarial_loss(validity_fake, fake)
+
+            # Total discriminator loss
+            d_loss = (d_real_loss + d_fake_loss)
+
+            d_loss.backward()
+            optimizer_D.step()
 
         if tensorboard:
             summary.add_scalars('loss', {'g_loss':g_loss.item(), 'd_loss':d_loss.item(),}, i)
